@@ -136,3 +136,29 @@ php artisan tinker                 # покопаться в данных рук
 ```
 
 Через Docker — та же команда внутри `docker run --rm -v "$PWD:/app" -w /app php:8.3-cli ...`
+
+---
+
+## Решение
+
+**Роуты** — `app/Http/Controllers/ReferralController.php`, `routes/api.php`.
+
+| Роут | Ответы |
+|---|---|
+| `POST /api/referrals/attach` | 201 — закреплён; 200 + `already_attached: true` — повторный вызов; 404 — код не найден; 422 — свой код; 409 — уже закреплён за другим мастером |
+| `GET /api/referrals/my` | `data[]`: `master_id`, `name`, `attached_at`, `rewarded`, `earned` |
+| `GET /api/referrals/earnings` | `total`, `pending`, `paid`, `rewarded_referrals`, `total_referrals` |
+
+Без корректного `X-Master-Id` — 401.
+
+**Правила, найденные в коде** (`PaymentObserver`):
+- реферал засчитывается на **первом денежном платеже** (card/sbp, сумма > 0) приведённого мастера, статус `rewarded`;
+- вознаграждение — **`config('referral.percent')`% (10%) от первого платежа**, разово; продления не начисляются.
+- «Засчитан» берётся из `referrals.status`, а не из `Master::isPaid()` — тот считает и промо/триал.
+
+**Исправлено:**
+1. Не было миграции `referral_earnings` — `migrate --seed` падал. Добавлена.
+2. `ReferralService::rewardAmount()` умножал на процент без деления на 100 (за 3000 ₽ начислялось 30000). Исправлено.
+3. Scope `Payment::monetary()` не отсекал платежи с суммой 0, хотя `isMonetary()` отсекает. Из-за этого Даша (неудачное списание на 0, затем 2000) не засчитывалась. Добавлено `amount > 0`.
+
+**Результат на сиде, `X-Master-Id: 1`:** Ира — 300, Даша — 200, Оля и Катя — не засчитаны; всего 500, в ожидании 500.

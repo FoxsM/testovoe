@@ -39,6 +39,7 @@ class Payment extends Model
 
     public function scopeMonetary(Builder $query): Builder
     {
-        return $query->whereIn('type', [self::TYPE_CARD, self::TYPE_SBP]);
+        return $query->whereIn('type', [self::TYPE_CARD, self::TYPE_SBP])
+            ->where('amount', '>', 0);
     }
 }
